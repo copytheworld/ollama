@@ -7,7 +7,7 @@ import (
 
 func TestWeighted(t *testing.T) {
 	logits := []float32{-10, 3, -10, -10}
-	sampler := NewSampler(0, 0, 0, 0, 0)
+	sampler := NewSampler(0, 0, 0, 0, 0, nil)
 	got, err := sampler.Sample(logits)
 	if err != nil {
 		t.Error(err)
@@ -19,7 +19,7 @@ func TestWeighted(t *testing.T) {
 	}
 
 	logits = []float32{-100, -10, 0, 10}
-	sampler = NewSampler(0, 0, 0, 0, 0)
+	sampler = NewSampler(0, 0, 0, 0, 0, nil)
 	got, err = sampler.Sample(logits)
 	if err != nil {
 		t.Error(err)
@@ -105,7 +105,7 @@ func TestNewSampler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sampler := NewSampler(tt.temperature, tt.topK, tt.topP, tt.minP, tt.seed)
+			sampler := NewSampler(tt.temperature, tt.topK, tt.topP, tt.minP, tt.seed, nil)
 			_, isGreedy := sampler.(*greedy)
 			if isGreedy != tt.wantGreedy {
 				t.Errorf("NewSampler() got greedy = %v, want %v", isGreedy, tt.wantGreedy)
@@ -115,9 +115,9 @@ func TestNewSampler(t *testing.T) {
 }
 
 func BenchmarkSample(b *testing.B) {
-	weighted := NewSampler(0.5, 10, 0.9, 0.2, -1)
+	weighted := NewSampler(0.5, 10, 0.9, 0.2, -1, nil)
 	samplers := map[string]Sampler{
-		"Greedy":   NewSampler(0, 0, 0, 0, 0), // Use NewSampler with temp=0 for greedy
+		"Greedy":   NewSampler(0, 0, 0, 0, 0, nil), // Use NewSampler with temp=0 for greedy
 		"Weighted": weighted,
 	}
 

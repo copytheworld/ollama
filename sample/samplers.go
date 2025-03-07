@@ -2,8 +2,12 @@ package sample
 
 import (
 	"errors"
+	"fmt"
 	"math/rand/v2"
 	"slices"
+	"time"
+
+	"github.com/ollama/ollama/llama"
 )
 
 // Sampler is not thread-safe. Each goroutine should have its own instance
@@ -24,6 +28,7 @@ type weighted struct {
 	topP        float32
 	minP        float32
 	temperature float32
+	grammar     *Grammar
 }
 
 func (s *weighted) Sample(logits []float32) (int32, error) {
@@ -32,6 +37,13 @@ func (s *weighted) Sample(logits []float32) (int32, error) {
 	}
 
 	tokens := s.tokens[:len(logits)]
+
+	// apply grammar
+	if s.grammar != nil {
+		start := time.Now()
+		logits = s.grammar.Apply(logits)
+		fmt.Printf("Grammar application took %v\n", time.Since(start))
+	}
 
 	for i, v := range logits {
 		tokens[i].id = int32(i)
@@ -83,15 +95,28 @@ func (s *weighted) Sample(logits []float32) (int32, error) {
 		idx = len(tokens) - 1
 	}
 
+	if s.grammar != nil {
+		s.grammar.Accept(tokens[idx].id)
+	}
+
 	return tokens[idx].id, nil
 }
 
-type greedy struct{}
+type greedy struct {
+	grammar *Grammar
+}
 
 // Greedy sample returns the index of the maximum value in logits.
 func (s greedy) Sample(logits []float32) (int32, error) {
 	if len(logits) == 0 {
 		return -1, errors.New("no logits provided for greedy sampling")
+	}
+
+	// apply grammar
+	if s.grammar != nil {
+		start := time.Now()
+		logits = s.grammar.Apply(logits)
+		fmt.Printf("Grammar application took %v\n", time.Since(start))
 	}
 
 	maxIdx := 0
@@ -103,13 +128,17 @@ func (s greedy) Sample(logits []float32) (int32, error) {
 		}
 	}
 
+	if s.grammar != nil {
+		s.grammar.Accept(int32(maxIdx))
+	}
+
 	return int32(maxIdx), nil
 }
 
 // TODO(parthsareen): update sampler interface to use json unmarshal https://github.com/ollama/ollama/issues/9278
-func NewSampler(temperature float32, topK int, topP float32, minP float32, seed int) Sampler {
+func NewSampler(temperature float32, topK int, topP float32, minP float32, seed int, grammar *Grammar) Sampler {
 	if temperature == 0 {
-		return &greedy{}
+		return &greedy{grammar: grammar}
 	}
 
 	var rng *rand.Rand
@@ -142,5 +171,29 @@ func NewSampler(temperature float32, topK int, topP float32, minP float32, seed 
 		topP:        topP,
 		minP:        minP,
 		temperature: temperature,
+		grammar:     grammar,
 	}
+}
+
+type Grammar struct {
+	Vocab   *llama.Vocab
+	Grammar string
+
+	grammar *llama.Sampler
+}
+
+func NewGrammar(vocab *llama.Vocab, grammar string) *Grammar {
+	return &Grammar{
+		Vocab:   vocab,
+		Grammar: grammar,
+		grammar: llama.NewLlamaGrammarSampler(vocab, grammar),
+	}
+}
+
+func (g *Grammar) Apply(logits []float32) []float32 {
+	return g.grammar.Apply(logits)
+}
+
+func (g *Grammar) Accept(token int32) {
+	g.grammar.Accept(token)
 }
